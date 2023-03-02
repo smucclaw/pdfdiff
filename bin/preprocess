@@ -1,0 +1,10 @@
+#!perl
+
+local $/;
+for (<>) {
+  s/^ARTICLE (\d+)\n\n(.*)/# ARTICLE $1: $2/mg;
+  s/^=+$//mg;
+  print;
+}
+    
+    
