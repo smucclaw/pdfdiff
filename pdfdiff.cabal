@@ -34,11 +34,13 @@ library
   build-depends:
       Diff
     , base >=4.7 && <5
+    , boxes
     , containers
     , megaparsec
     , parsec
     , parser-combinators
     , text
+    , text-metrics
   default-language: Haskell2010
 
 executable pdfdiff-exe
@@ -51,12 +53,14 @@ executable pdfdiff-exe
   build-depends:
       Diff
     , base >=4.7 && <5
+    , boxes
     , containers
     , megaparsec
     , parsec
     , parser-combinators
     , pdfdiff
     , text
+    , text-metrics
   default-language: Haskell2010
 
 test-suite pdfdiff-test
@@ -70,10 +74,12 @@ test-suite pdfdiff-test
   build-depends:
       Diff
     , base >=4.7 && <5
+    , boxes
     , containers
     , megaparsec
     , parsec
     , parser-combinators
     , pdfdiff
     , text
+    , text-metrics
   default-language: Haskell2010

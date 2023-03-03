@@ -27,6 +27,8 @@ dependencies:
 - megaparsec
 - parsec
 - parser-combinators
+- text-metrics
+- boxes
 
 ghc-options:
 - -Wdefault
