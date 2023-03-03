@@ -5,13 +5,15 @@ module DocDiff where
 import qualified Data.Map as Map
 import qualified Data.Text      as T
 import qualified Data.Text.IO   as TIO
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, listToMaybe)
 import Data.List (isSubsequenceOf, sort, sortOn)
 
 import Text.Megaparsec.Char   (string, digitChar, eol, newline, char)
 import Text.Megaparsec
 import Data.Void
 import Control.Monad (void)
+
+import Data.Text.Metrics
 
 type Filename = String
 type H1       = (Maybe T.Text, T.Text)
@@ -79,11 +81,33 @@ normalize ts = ts
 
 stats :: FileChunks -> IO ()
 stats fchunks =
-  putStrLn $ unlines [ "* " ++ filename ++ "\n" ++
-                       unlines [ "** " ++ maybe "" T.unpack n ++ " " ++ T.unpack h1 ++
-                                 "  length:" ++ show (T.length body)
-                                 -- ++ "\n" ++ T.unpack body
-                               | ((n,h1), body) <- sortOn fstfst (Map.toList filebody) ]
-                     | (filename, filebody) <- Map.toList fchunks
-                     ]
+  putStrLn $ unlines
+  [ "* " ++ filename ++ "\n" ++ unlines
+    [ "** " ++ maybe "" T.unpack n ++ " " ++ T.unpack h1 ++
+      "  length:" ++ show (T.length body) ++
+      "  most similar: " ++ maybe "none" shortname
+      (listToMaybe
+        (bySimilarity (fchunks `sans` filename) body))
+      -- ++ "\n" ++ T.unpack body
+    | ((n,h1), body) <- sortOn fstfst (Map.toList filebody) ]
+  | (filename, filebody) <- Map.toList fchunks
+  ]
   where fstfst ((mt,_),_) = fmap ((read :: (String -> Int)) . T.unpack) . T.splitOn "." <$> mt
+        sans = flip Map.delete
+
+shortname :: (Filename, H1) -> String
+shortname (fn, (artnum,h1text)) = sn fn ++ ":" ++ maybe "?" T.unpack artnum ++ "(" ++ T.unpack h1text ++ ")"
+  where sn fn
+          | "SAFTA"   `isSubsequenceOf` fn = "SAFTA"
+          | "ANZSCEP" `isSubsequenceOf` fn = "ANZSCEP"
+          | otherwise                      = fn
+
+bySimilarity :: FileChunks -> T.Text -> [(Filename, H1)]
+bySimilarity fchunks myt =
+  snd <$> (reverse . sort)
+  [ (metric, (fn, h1))
+  | (fn, farticles) <- Map.toList fchunks
+  , (h1, artbody)   <- Map.toList farticles
+  , let metric = jaroWinkler myt artbody
+  ]
+  
