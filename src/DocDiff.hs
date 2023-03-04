@@ -64,15 +64,17 @@ pChunk fn = do
       (,) <$> articleN <*> pH1
 
       | "ANZSCEP" `isSubsequenceOf` fn = do
-      let h1L = T.unpack <$> string "111"
-          h1R = T.unpack <$> string "bar"
-          h1starL = "**Article " *> some dotDigitChar <* ": "
+      let h1starL = "**Article " *> some dotDigitChar <* ": "
           h1starR = manyTill anyChar ("**" >> eol)
           h1equalsL = "Article " *> some dotDigitChar <* ": "
           h1equalsR = manyTill anyChar eol <* manyTill (TMC.char '=') eol
-      choice [ try $ (,) <$> h1L       <*> h1R
-             , try $ (,) <$> h1starL   <*> h1starR
+      choice [ try $ (,) <$> h1starL   <*> h1starR
              , try $ (,) <$> h1equalsL <*> h1equalsR ]
+
+      | "CSFTA" `isSubsequenceOf` fn = do
+          let articleN = "**[Article " *> some dotDigitChar <* "]{.smallcaps}**" <* some eol
+              pH1 = "**" *> manyTill anyChar "**" <* many eol
+          (,) <$> articleN <*> pH1
 
       | otherwise = error ("not prepared to process file " ++ fn)
 
@@ -98,18 +100,15 @@ stats fchunks = do
   putStrLn $ unlines
     [ "* " ++ filename ++ "\n" ++ unlines
       [ "** " ++ maybe "" T.unpack n ++ " " ++ T.unpack h1 ++ "\n" ++
-        ":length: " ++ show (T.length body) ++ "\n" ++ unlines
-        [ "*** relative to " ++ fn ++ "\n" ++ unlines
-          [ "**** most similar " ++ show cfocus ++ " = " ++
-            shortname (head $ snd <$> sort (bySimilarOneDoc cfocus fc (fn, farticles)))
-          | cfocus <- [minBound .. maxBound :: ChunkFocus]
-          ]
-        | (fn,farticles) <- Map.toList $ fchunks `sans` filename
-        ]
-        ++
-        if showBody
-        then "*** body" ++ "\n" ++ T.unpack body
-        else mempty
+        ":length: " ++ show (T.length body) ++ "\n" ++
+        (if showBody
+          then "*** body" ++ "\n" ++ T.unpack body
+          else mempty)
+        ++ unlines [ "*** " ++ sn fn ++ ": most similar " ++ show cfocus ++ " = " ++
+                     shortname (head $ snd <$> sort (bySimilarOneDoc cfocus fc (fn, farticles)))
+                   | (fn,farticles) <- Map.toList $ fchunks `sans` filename
+                   , cfocus <- [minBound .. maxBound :: ChunkFocus]
+                   ]
       | fc@((n,h1), body) <- sortByArtNum (Map.toList filebody)
       ]
     | (filename, filebody) <- Map.toList fchunks
@@ -122,13 +121,15 @@ sortByArtNum = sortOn fstfst
     fstfst ((mt,_),_) = fmap ((read :: (String -> Int)) . T.unpack) . T.splitOn "." <$> mt
         
 shortname :: (Filename, H1) -> String
-shortname (fn, (artnum,h1text)) = sn fn ++ ":" ++ maybe "?" T.unpack artnum ++ "(" ++ T.unpack h1text ++ ")"
+shortname (fn, (artnum,h1text)) = maybe "?" T.unpack artnum ++ "(" ++ T.unpack h1text ++ ")"
 
 sn :: Filename -> String
 sn fn
   | "SAFTA"   `isSubsequenceOf` fn = "SAFTA"
   | "ANZSCEP" `isSubsequenceOf` fn = "ANZSCEP"
+  | "CSFTA"   `isSubsequenceOf` fn = "CSFTA"
   | otherwise                      = fn
+  -- [TODO] do this based on /xxx/
 
 data ChunkFocus = Title | Body
   deriving (Eq, Show, Enum, Bounded)
