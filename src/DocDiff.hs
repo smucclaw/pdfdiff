@@ -11,15 +11,21 @@ import Data.List (isSubsequenceOf, sort, sortOn)
 import Text.Megaparsec.Char as TMC  (string, digitChar, eol, newline, char)
 import Text.Megaparsec
 import Data.Void
-import Control.Monad (void, when)
+import Control.Monad (void, when, forM_)
 
+import Data.Char (toLower)
 import Data.Text.Metrics
 
 import Text.PrettyPrint.Boxes
 
 type Filename = String
 type H1       = (Maybe T.Text, T.Text)
-type FileChunks = Map.Map Filename (Map.Map H1 T.Text)
+type FileChunks = Map.Map Filename Articles
+type Articles   = Map.Map H1 T.Text
+type Article    =        (H1,T.Text)
+
+showBody :: Bool
+showBody = True
 
 preprocess :: [String] -> IO FileChunks
 preprocess filenames = do
@@ -42,9 +48,6 @@ filechunks fn content =
 
 preamble :: Filename -> Parser T.Text
 preamble fn = T.pack <$> manyTill anyChar (lookAhead $ pChunk fn)
-
-dotDigitChar :: Parser Char
-dotDigitChar = digitChar <|> TMC.char '.'
 
 pChunk :: Filename -> Parser (H1, T.Text)
 pChunk fn = do
@@ -72,7 +75,12 @@ pChunk fn = do
              , try $ (,) <$> h1equalsL <*> h1equalsR ]
 
       | otherwise = error ("not prepared to process file " ++ fn)
+
+anyChar :: Parser Char
 anyChar = satisfy (const True)
+
+dotDigitChar :: Parser Char
+dotDigitChar = digitChar <|> TMC.char '.'
 
 type Parser = Parsec Void T.Text
 
@@ -87,16 +95,22 @@ stats fchunks = do
             | doc1@(fn1,fb1) <- Map.toList   fchunks
             , doc2@(fn2,fb2) <- Map.toList $ fchunks `sans` fn1
             ]
-  when True $
-   putStrLn $ unlines
+  putStrLn $ unlines
     [ "* " ++ filename ++ "\n" ++ unlines
-      [ "** " ++ maybe "" T.unpack n ++ " " ++ T.unpack h1 ++
-        "  length:" ++ show (T.length body) ++
-        "  most similar: " ++ maybe "none" shortname
-        (listToMaybe
-         (bySimilarity (fchunks `sans` filename) body))
-        ++ "\n" ++ T.unpack body
-      | ((n,h1), body) <- sortByArtNum (Map.toList filebody)
+      [ "** " ++ maybe "" T.unpack n ++ " " ++ T.unpack h1 ++ "\n" ++
+        ":length: " ++ show (T.length body) ++ "\n" ++ unlines
+        [ "*** relative to " ++ fn ++ "\n" ++ unlines
+          [ "**** most similar " ++ show cfocus ++ " = " ++
+            shortname (head $ snd <$> sort (bySimilarOneDoc cfocus fc (fn, farticles)))
+          | cfocus <- [minBound .. maxBound :: ChunkFocus]
+          ]
+        | (fn,farticles) <- Map.toList $ fchunks `sans` filename
+        ]
+        ++
+        if showBody
+        then "*** body" ++ "\n" ++ T.unpack body
+        else mempty
+      | fc@((n,h1), body) <- sortByArtNum (Map.toList filebody)
       ]
     | (filename, filebody) <- Map.toList fchunks
     ]
@@ -116,29 +130,47 @@ sn fn
   | "ANZSCEP" `isSubsequenceOf` fn = "ANZSCEP"
   | otherwise                      = fn
 
-bySimilarity :: FileChunks -> T.Text -> [(Filename, H1)]
-bySimilarity fchunks myt =
-  snd <$> sort
-  [ (metric, (fn, h1))
+data ChunkFocus = Title | Body
+  deriving (Eq, Show, Enum, Bounded)
+
+bySimilarAllDocs :: ChunkFocus -> Article -> FileChunks -> [(Filename, H1)]
+bySimilarAllDocs cfocus mychunk@((myh1num,myh1title),mybody) fchunks =
+  snd <$> sort (concat
+  [ bySimilarOneDoc cfocus mychunk (fn, farticles)
   | (fn, farticles) <- Map.toList fchunks
-  , (h1, artbody)   <- Map.toList farticles
-  , let metric = levenshtein myt artbody
+  ])
+
+bySimilarOneDoc :: ChunkFocus -> Article -> (Filename, Articles) -> [(Int,(Filename, H1))]
+bySimilarOneDoc cfocus mychunk@((myh1num,myh1title),mybody) (fn, farticles) =
+  [ (metric, (fn, h1))
+  | chunk@(h1@(artnum, arttitle), artbody)   <- Map.toList farticles
+  , let metric :: Int
+        metric = bySimilar cfocus mychunk (fn,chunk)
   ]
+
+bySimilar :: ChunkFocus -> Article -> (Filename, Article) -> Int
+bySimilar cfocus mychunk@((myh1num,myh1title),mybody) (fn, ((artnum, arttitle), artbody)) =
+  case cfocus of
+    Title -> algo myh1title arttitle
+    Body  -> algo mybody artbody
+  where algo x y = levenshtein (T.toLower x) (T.toLower y)
   
 
 drawMatrix :: (Filename, Map.Map H1 T.Text) -> (Filename, Map.Map  H1 T.Text) -> IO ()
-drawMatrix doc1@(fn1,fb1) doc2@(fn2,fb2) = do
-  putStrLn $ unwords [ "* matrix:", sn fn1 ++ ends fb1
-                     , "/" ,        sn fn2 ++ ends fb2 ]
-  printBox (hsep 1 left $
-            vcat left (text . T.unpack <$> ("" : headers fb2)) :
-            [ vcat right (text (T.unpack artnum1) :
-                          [ text $ show $ levenshtein artbody1 artbody2
-                          | ((Just artnum2, arttitle2), artbody2) <- sortByArtNum $ Map.toList fb2
-                          ])
-            | ((Just artnum1, arttitle1), artbody1) <- sortByArtNum $ Map.toList fb1
-            ]
-           )
+drawMatrix doc1@(fn1,fb1) doc2@(fn2,fb2) =
+  forM_ [minBound .. maxBound :: ChunkFocus] $ \chunkfocus -> do
+    putStrLn $ unwords [ "* matrix of similarity by", show chunkfocus ++ ":", sn fn1 ++ ends fb1
+                       , "/" ,        sn fn2 ++ ends fb2 ]
+    printBox (hsep 1 left $
+              vcat left (text . T.unpack <$> ("" : headers fb2)) :
+              [ vcat right (text (T.unpack artnum1) :
+                            [ text $ show $ bySimilar chunkfocus myart (fn2,art2)
+                            | art2@((Just artnum2, arttitle2), artbody2) <- sortByArtNum $ Map.toList fb2
+                            ])
+              | myart@((Just artnum1, arttitle1), artbody1) <- sortByArtNum $ Map.toList fb1
+              ]
+             )
+
   where
     headers fb = [ artnum | ((Just artnum, arttitle), artbody) <- sortByArtNum $ Map.toList fb ]
     ends fb = "(" ++ (T.unpack . head) (headers fb) ++ "--" ++ (T.unpack . last) (headers fb) ++ ")"
