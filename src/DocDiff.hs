@@ -8,7 +8,7 @@ import qualified Data.Text.IO   as TIO
 import Data.Maybe (fromMaybe, listToMaybe, isJust)
 import Data.List (isSubsequenceOf, sort, sortOn)
 
-import Text.Megaparsec.Char as TMC  (string, digitChar, eol, newline, char)
+import Text.Megaparsec.Char as TMC  (string, digitChar, eol, newline, char, space)
 import Text.Megaparsec
 import Data.Void
 import Control.Monad (void, when, forM_)
@@ -59,7 +59,7 @@ pChunk fn = do
     mapPair (f1,f2) (x,y) = (f1 x, f2 y)
     pH1 fn
       | "SAFTA" `isSubsequenceOf` fn = do
-      let articleN = "ARTICLE " *> some dotDigitChar <* many eol
+      let articleN = "ARTICLE " *> some dotDigitChar <* many eol <* many "#" <* many " "
           pH1 = manyTill anyChar eol <* many "=" <* many eol
       (,) <$> articleN <*> pH1
 
@@ -73,7 +73,7 @@ pChunk fn = do
 
       | "CSFTA" `isSubsequenceOf` fn = do
           let articleN = "**[Article " *> some dotDigitChar <* "]{.smallcaps}**" <* some eol
-              pH1 = "**" *> manyTill anyChar "**" <* many eol
+              pH1 = some "*" *> manyTill anyChar "**" <* many "*" <* many eol
           (,) <$> articleN <*> pH1
 
       | otherwise = error ("not prepared to process file " ++ fn)
@@ -94,8 +94,9 @@ normalize ts = ts
 stats :: FileChunks -> IO ()
 stats fchunks = do
   sequence_ [ drawMatrix doc1 doc2
-            | doc1@(fn1,fb1) <- Map.toList   fchunks
-            , doc2@(fn2,fb2) <- Map.toList $ fchunks `sans` fn1
+            | doc1@(fn1,fb1) <-                                      Map.toList fchunks
+            , doc2@(fn2,fb2) <- drop 1 $ dropWhile ((fn1 /=) . fst) (Map.toList fchunks)
+            -- the above is so we don't dup pairs, we just compare one half of the triangle
             ]
   putStrLn $ unlines
     [ "* " ++ filename ++ "\n" ++ unlines
@@ -160,8 +161,9 @@ bySimilar cfocus mychunk@((myh1num,myh1title),mybody) (fn, ((artnum, arttitle), 
 drawMatrix :: (Filename, Map.Map H1 T.Text) -> (Filename, Map.Map  H1 T.Text) -> IO ()
 drawMatrix doc1@(fn1,fb1) doc2@(fn2,fb2) =
   forM_ [minBound .. maxBound :: ChunkFocus] $ \chunkfocus -> do
-    putStrLn $ unwords [ "* matrix of similarity by", show chunkfocus ++ ":", sn fn1 ++ ends fb1
-                       , "/" ,        sn fn2 ++ ends fb2 ]
+    putStrLn $ unwords [ "* matrix of similarity"
+                       , sn fn1 ++ ends fb1 , "/" ,        sn fn2 ++ ends fb2
+                       , "for", show chunkfocus ]
     printBox (hsep 1 left $
               vcat left (text . T.unpack <$> ("" : headers fb2)) :
               [ vcat right (text (T.unpack artnum1) :

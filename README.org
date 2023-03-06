@@ -1,15 +1,57 @@
 #+TITLE: pdfdiff
 
-naively try to figure out which articles of which documents correspond to which other articles
+naively try to figure out which articles of which documents correspond to which other articles.
+
+
 
 * install and setup
 
 #+begin_src shell
-git clone https://github.com/smucclaw/pdfdiff.git
-time stack run -- "FTA/1. Goods/SAFTA/Chapter 2 -Trade in Goods.md" "FTA/1. Goods/ANZSCEP/Chapter 2 - Trade in Goods.md" FTA/1.\ Goods/CSFTA/Chapter\ 3\ -\ Trade\ in\ Goods.md > out.org
+  git clone https://github.com/smucclaw/pdfdiff.git
+  cd pdfdiff
 #+end_src
 
-* produces the following
+In the ~pdfdiff~ directory we expect a directory ~FTA/~ to contain directories like these:
+
+#+begin_example
+┌─[20230306-17:47:56]   [mengwong@rosegold:~/src/smucclaw/pdfdiff/FTA]
+└─[0] <> ll
+total 24
+drwx------@ 13 mengwong  staff     416 Mar  6 17:12 .
+drwx------@  9 mengwong  staff     288 Mar  2 13:55 ..
+drwx------@  8 mengwong  staff     256 Mar  6 17:45 1._Goods
+drwx------@  6 mengwong  staff     192 Mar  6 17:38 2._Services
+drwx------@  6 mengwong  staff     192 Mar  6 17:38 3._Investment
+drwx------@  4 mengwong  staff     128 Mar  6 17:13 4._HS_Classification_&_Annotation
+#+end_example
+
+In my case, I have a symlink:
+
+#+begin_example
+  ln -s ~/"Google-Drive/My Drive/CCLAW Centre for Computational Law/RPCL Research Team/Knowledge Management - Research & Working Docs/MTI Use Case/FTA" ./
+#+end_example
+
+Once that's done, you can run
+
+#+begin_src shell
+make
+#+end_src
+
+This should produce /matrix/ files that gauge the similarity of articles to each other.
+
+#+begin_example
+┌─[20230306-18:09:31]   [mengwong@rosegold:~/src/smucclaw/pdfdiff]
+└─[0] <git:(main e77e631✱✈) > ll FTA/*/matrix*
+-rw-r--r--@ 1 mengwong  staff  137229 Mar  6 17:50 FTA/1._Goods/matrix-RulesOfOrigin.org
+-rw-r--r--@ 1 mengwong  staff   84130 Mar  6 17:46 FTA/1._Goods/matrix-TradeInGoods.org
+-rw-r--r--@ 1 mengwong  staff  106508 Mar  6 17:51 FTA/2._Services/matrix-TradeInServices.org
+-rw-r--r--@ 1 mengwong  staff   22146 Mar  6 17:51 FTA/3._Investment/matrix-Investment.org
+#+end_example
+
+From here, you can split the documents up by article, lay them out on a web page, and run diffs between them.
+
+
+* ~stack run~ produces the following output file
 
 FTA/1. Goods/SAFTA/Chapter 2 -Trade in Goods.md: read 28178 bytes
 FTA/1. Goods/ANZSCEP/Chapter 2 - Trade in Goods.md: read 28884 bytes
