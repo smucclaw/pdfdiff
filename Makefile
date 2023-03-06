@@ -52,4 +52,4 @@ FTA/3._Investment/matrix-Investment.org: FTA/3._Investment/ANZSCEP/Chapter_7_-_I
                                          FTA/3._Investment/SAFTA/Chapter_8_-_Investment.md   \
                                          FTA/3._Investment/CSFTA/Chapter_10_-_Investment.md
 	@echo "* building $@"
-	stack run -- $< > $@
+	stack run -- $^ > $@

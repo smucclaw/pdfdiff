@@ -6,7 +6,7 @@ import qualified Data.Map as Map
 import qualified Data.Text      as T
 import qualified Data.Text.IO   as TIO
 import Data.Maybe (fromMaybe, listToMaybe, isJust)
-import Data.List (isSubsequenceOf, sort, sortOn)
+import Data.List (isSubsequenceOf, sort, sortOn, isPrefixOf)
 
 import Text.Megaparsec.Char as TMC  (string, digitChar, eol, newline, char, space)
 import Text.Megaparsec
@@ -27,8 +27,8 @@ type Article    =        (H1,T.Text)
 showBody :: Bool
 showBody = True
 
-preprocess :: [String] -> IO FileChunks
-preprocess filenames = do
+readfiles :: [String] -> IO FileChunks
+readfiles filenames = do
   chunks <- concat <$> mapM readfile filenames
   return $ Map.fromList chunks
   where
@@ -36,8 +36,25 @@ preprocess filenames = do
       content <- TIO.readFile fn
       putStrLn $ fn ++ ": read " ++ show (T.length content) ++ " bytes"
       return [ ( fn
-               , Map.fromList $ filechunks fn content )
+               , Map.fromList $ filechunks fn (preprocess content) )
              ]
+
+
+-- | deal with this nastiness -- a footnote to an article title, which should really be a term under it
+-- @
+--  ARTICLE 16
+--
+--  ^16^ For greater certainty, this Article does not preclude the equitable, non-discriminatory and good faith application of a Party's laws relating to its social security, public retirement or compulsory savings programmes.
+--
+--  ## Subrogation
+--
+--  1.  If a Party or a designated agency of a Party makes a payment to an investor of the Party under a guarantee, a contract of insurance or other form of indemnity it has granted in respect of a covered in
+-- @
+preprocess :: T.Text -> T.Text
+preprocess t =
+  let asLines = T.lines t
+      newLines = filter (not . ("^" `T.isPrefixOf`)) asLines
+  in T.unlines newLines
 
 -- | we could use a complete markdown parser here, but let's keep it simple until we need one.
 filechunks :: Filename -> T.Text -> [(H1, T.Text)]
@@ -59,15 +76,15 @@ pChunk fn = do
     mapPair (f1,f2) (x,y) = (f1 x, f2 y)
     pH1 fn
       | "SAFTA" `isSubsequenceOf` fn = do
-      let articleN = "ARTICLE " *> some dotDigitChar <* many eol <* many "#" <* many " "
-          pH1 = manyTill anyChar eol <* many "=" <* many eol
-      (,) <$> articleN <*> pH1
+      let articleN = "ARTICLE " *> some dotDigitChar <* some eol <* optional (some "#" <* some " ")
+          articleT = manyTill anyChar eol <* many "=" <* many eol -- title
+      (,) <$> articleN <*> articleT
 
       | "ANZSCEP" `isSubsequenceOf` fn = do
-      let h1starL = "**Article " *> some dotDigitChar <* ": "
-          h1starR = manyTill anyChar ("**" >> eol)
-          h1equalsL = "Article " *> some dotDigitChar <* ": "
-          h1equalsR = manyTill anyChar eol <* manyTill (TMC.char '=') eol
+      let h1starL = some "*" *> "Article " *> some dotDigitChar <* ": "
+          h1starR = many "*" *> manyTill anyChar (some "*" >> eol)
+          h1equalsL = many "*" *> "Article " *> some dotDigitChar <* ": "
+          h1equalsR = many "*" *> manyTill anyChar ("*" <|> eol) <* many "*" <* manyTill (TMC.char '=') eol
       choice [ try $ (,) <$> h1starL   <*> h1starR
              , try $ (,) <$> h1equalsL <*> h1equalsR ]
 
@@ -100,21 +117,22 @@ stats fchunks = do
             ]
   putStrLn $ unlines
     [ "* " ++ filename ++ "\n" ++ unlines
-      [ "** " ++ maybe "" T.unpack n ++ " " ++ T.unpack h1 ++ "\n" ++
+      [ "** " ++ maybe "" T.unpack n ++ " " ++ T.unpack (elideSuperscripts h1title) ++ "\n" ++
         ":length: " ++ show (T.length body) ++ "\n" ++
         (if showBody
-          then "*** body" ++ "\n" ++ T.unpack body
+          then "*** body" ++ "\n" ++ T.unpack body ++ "\n"
           else mempty)
         ++ unlines [ "*** " ++ sn fn ++ ": most similar " ++ show cfocus ++ " = " ++
                      shortname (head $ snd <$> sort (bySimilarOneDoc cfocus fc (fn, farticles)))
                    | (fn,farticles) <- Map.toList $ fchunks `sans` filename
                    , cfocus <- [minBound .. maxBound :: ChunkFocus]
                    ]
-      | fc@((n,h1), body) <- sortByArtNum (Map.toList filebody)
+      | fc@((n,h1title), body) <- sortByArtNum (Map.toList filebody)
       ]
     | (filename, filebody) <- Map.toList fchunks
     ]
   where sans = flip Map.delete
+        elideSuperscripts = T.takeWhile (/= '^')
 
 sortByArtNum :: [((Maybe T.Text, b1), b2)] -> [((Maybe T.Text, b1), b2)]
 sortByArtNum = sortOn fstfst

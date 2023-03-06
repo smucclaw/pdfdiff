@@ -6,5 +6,5 @@ import System.Environment
 main :: IO ()
 main = do
   fileArgs <- getArgs
-  store <- preprocess fileArgs
+  store <- readfiles fileArgs
   stats store
