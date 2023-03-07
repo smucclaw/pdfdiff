@@ -2,6 +2,15 @@
 
 naively try to figure out which articles of which documents correspond to which other articles.
 
+* Prerequisites
+
+** pandoc
+
+your system package manager should be able to install ~pandoc~
+
+** parallel
+
+your system package manager should be able to install ~parallel~
 
 
 * install and setup
