@@ -11,8 +11,10 @@ clean:
 	rm FTA/*/*/*.md FTA/*/*/*.org FTA/*/*/*.html FTA/*/matrices-*.org
 
 %.docx : %.pdf
-	@echo "* [ERROR] Please use Adobe Acrobat to export" $< "to Docx. This is a mostly manual step."
-	@if [ -e $@ ]; then touch $@; fi
+	@if [ -e $@ ]; \
+		then touch $@; \
+		else echo "* [ERROR] Please use Adobe Acrobat to export" $< "to Docx. This is a mostly manual step."; \
+	fi
 
 %.md : %.docx
 	pandoc $^ --wrap=none --lua-filter=lua/blockquote_to_plain.lua -t markdown -o $@
