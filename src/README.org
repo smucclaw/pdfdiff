@@ -1,0 +1,143 @@
+#+TITLE: about these modules
+
+* App Architecture
+
+** In this initiative, we set for ourselves the task to produce a web app
+
+that allows the user to
+1. compare multiple texts, at the intersection of
+   - a hierarchy of (agreement genre, chapter, article, table | paragraph, sentence)
+   - a country
+   - a version
+   - syntactic or semantic view: skin vs meat, concrete vs abstract
+2. annotate at various levels of the hierarchy
+4. show or hide particular elements within the hierarchy
+5. navigate to particular locations in the hierarchy
+6. search
+
+These requirements are an interpretation of client guidance, see slides available separately.
+
+The workspace is organized into
+
+*** the navigation structure
+
+**** at top, has checkboxes to turn content on and off
+
+**** at left, has a tree view of the document hierarchy, so you can navigate straight to a section
+
+Note that the notion of a document hierarchy can falter if we are
+comparing two different chapters or two different agreement genres;
+how would we decide what should live in the left nav column?
+
+*** the presentation window
+
+Shows the actual content of the HTML and supports "in-game navigation".
+
+Much of the heavy lifting here is is done by impress.js. See the bookmark plugin.
+
+We would need to heavily modify impress.js to rip out the usual
+navigation keydown/keyup event listeners, or limit them to a
+particular window, so as not to interfere with the rest of the app
+when focus is out of this impress frame.
+
+*** an edit layer that allows for annotation
+
+At prototype level of maturity, can we just attach a Maybe Textbox to each element in the hierarchy?
+
+We can store these annotations in SQLite or just a JSON file for the system to read.
+
+*** a download button
+
+** Examples of Possible Comparisons
+
+*** Example 1
+
+bring up the
+- text of
+- the current versions of
+- free trade agreements with
+- Australia, Brazil, and Chile
+
+and compare these articles
+- customs duties
+- customs value
+  
+*** Example 2
+
+bring up the
+- text of
+- the last three versions of our
+- free trade agreement with
+- Australia
+
+and show only
+- the articles which have changed between those versions
+
+*** Example 3
+
+bring up
+- the text of
+- all of our agreements with
+- Brazil
+
+and show only
+- those articles which have annotations
+
+*** Example 4
+
+bring up
+- the infographic semantic representation of
+- the current versions of
+- the free trade agreements with
+- Brazil, Chile, and Denmark
+
+and show only
+- chapter 2 of each agreement
+- highlighting the articles which have semantic differences
+
+* Data Flow
+
+** PDF to Docx (by Adobe Acrobat, export)
+this is done by hand, sadly
+** Docx to Markdown (by Pandoc)
+used for DocDiff
+** Docx to HTML (by Pandoc)
+used by HTMLLayout
+** Docx to Org (by Pandoc)
+used by developer to see what's in the docs more efficiently
+
+* Components
+
+** DONE DocDiff
+
+Compute the similarities between articles of a chapter, across different countries.
+
+Outputs to a matrix file which can be read to draw lines in the UI.
+
+This is done in Haskell.
+
+Currently the matrix file contains the article body content in markdown format but maybe we should save it as HTML instead.
+
+** TODO HTMLLayout
+
+This component needs to run in the browser, so maybe we use Purescript / Halogen as the framework for the app generally?
+
+*** Given a ContentConfig
+
+which
+
+- describes all the countries, chapters, and articles, and the relationships between then
+
+- is read from the output of DocDiff above
+
+- contains article content in HTML format
+
+*** lay out the articles on the webpage based on navigation controls
+
+*** then we hand it to impress to manage CSS viewings
+*** use a jsdiff component to colorize the text of the articles
+
+if syntactic mode is enabled, of course
+
+
+
