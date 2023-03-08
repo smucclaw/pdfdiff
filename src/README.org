@@ -6,14 +6,20 @@
 
 that allows the user to
 1. compare multiple texts, at the intersection of
-   - a hierarchy of (agreement genre, chapter, article, table | paragraph, sentence)
-   - a country
+   - a hierarchy of
+     1. agreement genre (e.g. FTA == free trade agreement, DEA == digital economy agreement)
+     2. book (e.g. 1. Goods, 2. Services, 3. Investment)
+     3. chapter
+     4. article
+     5. table | paragraph
+     6. sentence
+   - a country (specific agreement e.g. SAFTA, ANZSCEP, CSFTA)
    - a version
    - syntactic or semantic view: skin vs meat, concrete vs abstract
 2. annotate at various levels of the hierarchy
-4. show or hide particular elements within the hierarchy
-5. navigate to particular locations in the hierarchy
-6. search
+3. show or hide particular elements within the hierarchy
+4. navigate to particular locations in the hierarchy
+5. search
 
 These requirements are an interpretation of client guidance, see slides available separately.
 

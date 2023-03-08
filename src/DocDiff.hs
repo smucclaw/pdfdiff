@@ -10,23 +10,33 @@ import Data.List (isSubsequenceOf, sort, sortOn, isPrefixOf)
 
 import Text.Megaparsec.Char as TMC  (string, digitChar, eol, newline, char, space)
 import Text.Megaparsec
-import Data.Void
+    ( Parsec,
+      (<|>),
+      MonadParsec(lookAhead, try, eof),
+      optional,
+      runParser,
+      satisfy,
+      errorBundlePretty,
+      choice,
+      many,
+      manyTill,
+      some )
+import Data.Void ( Void )
 import Control.Monad (void, when, forM_)
 
 import Data.Char (toLower)
-import Data.Text.Metrics
+import Data.Text.Metrics ( levenshtein )
 
 import Text.PrettyPrint.Boxes
+    ( hsep, left, printBox, right, text, vcat )
 
 type Filename = String
-type H1       = (Maybe T.Text, T.Text)
-type FileChunks = Map.Map Filename Articles
+type H1       = (Maybe T.Text, T.Text)       -- ^ the header for an article
+type FileChunks = Map.Map Filename Articles  -- ^ an entire document
 type Articles   = Map.Map H1 T.Text
 type Article    =        (H1,T.Text)
 
-showBody :: Bool
-showBody = True
-
+-- | the main processor: given multiple filenames, construct similarity metrics, and output to org file format.
 readfiles :: [String] -> IO FileChunks
 readfiles filenames = do
   chunks <- concat <$> mapM readfile filenames
@@ -39,8 +49,13 @@ readfiles filenames = do
                , Map.fromList $ filechunks fn (preprocess content) )
              ]
 
+-- | do we want the output to include the body of the articles or just the titles?
+showBody :: Bool
+showBody = True
 
--- | deal with this nastiness -- a footnote to an article title, which should really be a term under it
+
+-- | deal with this nastiness -- a footnote to an article title, which should really be a term under it.
+-- For now we just delete the line. In future we can reorder footnotes to paragraph 0 in the article.
 -- @
 --  ARTICLE 16
 --
@@ -57,15 +72,19 @@ preprocess t =
   in T.unlines newLines
 
 -- | we could use a complete markdown parser here, but let's keep it simple until we need one.
+-- We parse input into a preamble followed by a list of articles.
 filechunks :: Filename -> T.Text -> [(H1, T.Text)]
 filechunks fn content =
   case runParser ((,) <$> preamble fn <*> some (pChunk fn) <* eof) fn content of
     Left  x      -> error $ errorBundlePretty x
     Right (p ,xs) -> ((Nothing, "__PREAMBLE"), p) : xs
 
+-- | Whatever comes before the first article
 preamble :: Filename -> Parser T.Text
 preamble fn = T.pack <$> manyTill anyChar (lookAhead $ pChunk fn)
 
+-- | Parser for a particular article, comprising header and body.
+-- The header is in turn broken up in to article number and article title.
 pChunk :: Filename -> Parser (H1, T.Text)
 pChunk fn = do
   let h1 = pH1 fn
@@ -103,11 +122,11 @@ dotDigitChar = digitChar <|> TMC.char '.'
 
 type Parser = Parsec Void T.Text
 
+-- | convert "e-mail" to "email", if that makes a difference ... the metric we use is robust so we don't need this.
 normalize :: [T.Text] -> [T.Text]
 normalize ts = ts
 
--- | compute approximate "hash" by calculating the word distribution signature of a given chunk
-
+-- | compute similarity calculating the Levenshtein distance from one article to another
 stats :: FileChunks -> IO ()
 stats fchunks = do
   sequence_ [ drawMatrix doc1 doc2
@@ -120,7 +139,7 @@ stats fchunks = do
       [ "** " ++ maybe "" T.unpack n ++ " " ++ T.unpack (elideSuperscripts h1title) ++ "\n" ++
         ":length: " ++ show (T.length body) ++ "\n" ++
         (if showBody
-          then "*** body" ++ "\n" ++ T.unpack body ++ "\n"
+          then "*** body" ++ "\n" ++ prefixEachLineWithSpace (T.unpack body) ++ "\n"
           else mempty)
         ++ unlines [ "*** " ++ sn fn ++ ": most similar " ++ show cfocus ++ " = " ++
                      shortname (head $ snd <$> sort (bySimilarOneDoc cfocus fc (fn, farticles)))
@@ -133,15 +152,18 @@ stats fchunks = do
     ]
   where sans = flip Map.delete
         elideSuperscripts = T.takeWhile (/= '^')
-
+        prefixEachLineWithSpace = unlines . fmap (" " ++) . lines
+-- | AFAIK only Apple's Finder is smart enough to sort 1.7 1.8 1.9 1.10 1.11 1.12 instead of 1. 1.10 1.12
 sortByArtNum :: [((Maybe T.Text, b1), b2)] -> [((Maybe T.Text, b1), b2)]
 sortByArtNum = sortOn fstfst
   where
     fstfst ((mt,_),_) = fmap ((read :: (String -> Int)) . T.unpack) . T.splitOn "." <$> mt
-        
+
+-- | show an article number and title, e.g.: 2(Trade in Goods)
 shortname :: (Filename, H1) -> String
 shortname (fn, (artnum,h1text)) = maybe "?" T.unpack artnum ++ "(" ++ T.unpack h1text ++ ")"
 
+-- | extract agreement name from a fully qualified path
 sn :: Filename -> String
 sn fn
   | "SAFTA"   `isSubsequenceOf` fn = "SAFTA"
@@ -150,9 +172,11 @@ sn fn
   | otherwise                      = fn
   -- [TODO] do this based on /xxx/
 
+-- | Do we want to compare articles by title or body?
 data ChunkFocus = Title | Body
   deriving (Eq, Show, Enum, Bounded)
 
+-- | let's compare one document against all the others
 bySimilarAllDocs :: ChunkFocus -> Article -> FileChunks -> [(Filename, H1)]
 bySimilarAllDocs cfocus mychunk@((myh1num,myh1title),mybody) fchunks =
   snd <$> sort (concat
@@ -160,6 +184,7 @@ bySimilarAllDocs cfocus mychunk@((myh1num,myh1title),mybody) fchunks =
   | (fn, farticles) <- Map.toList fchunks
   ])
 
+-- | let's compare one document against just one other
 bySimilarOneDoc :: ChunkFocus -> Article -> (Filename, Articles) -> [(Int,(Filename, H1))]
 bySimilarOneDoc cfocus mychunk@((myh1num,myh1title),mybody) (fn, farticles) =
   [ (metric, (fn, h1))
@@ -168,6 +193,7 @@ bySimilarOneDoc cfocus mychunk@((myh1num,myh1title),mybody) (fn, farticles) =
         metric = bySimilar cfocus mychunk (fn,chunk)
   ]
 
+-- | call the actual text similarity function for a given pair of articles
 bySimilar :: ChunkFocus -> Article -> (Filename, Article) -> Int
 bySimilar cfocus mychunk@((myh1num,myh1title),mybody) (fn, ((artnum, arttitle), artbody)) =
   case cfocus of
@@ -175,13 +201,13 @@ bySimilar cfocus mychunk@((myh1num,myh1title),mybody) (fn, ((artnum, arttitle), 
     Body  -> algo mybody artbody
   where algo x y = levenshtein (T.toLower x) (T.toLower y)
   
-
+-- | draw the matrices of similarity, over all the ChunkFocus methods we are prepared to handle
 drawMatrix :: (Filename, Map.Map H1 T.Text) -> (Filename, Map.Map  H1 T.Text) -> IO ()
 drawMatrix doc1@(fn1,fb1) doc2@(fn2,fb2) =
   forM_ [minBound .. maxBound :: ChunkFocus] $ \chunkfocus -> do
-    putStrLn $ unwords [ "* matrix of similarity"
-                       , sn fn1 ++ ends fb1 , "/" ,        sn fn2 ++ ends fb2
+    putStrLn $ unwords [ "* matrix of similarity" , sn fn1 ++ ends fb1 , "/" , sn fn2 ++ ends fb2
                        , "for", show chunkfocus ]
+    putStrLn "#+begin_example" -- avoid wrapping in github org view
     printBox (hsep 1 left $
               vcat left (text . T.unpack <$> ("" : headers fb2)) :
               [ vcat right (text (T.unpack artnum1) :
@@ -191,6 +217,7 @@ drawMatrix doc1@(fn1,fb1) doc2@(fn2,fb2) =
               | myart@((Just artnum1, arttitle1), artbody1) <- sortByArtNum $ Map.toList fb1
               ]
              )
+    putStrLn "#+end_example"
 
   where
     headers fb = [ artnum | ((Just artnum, arttitle), artbody) <- sortByArtNum $ Map.toList fb ]
