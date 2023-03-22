@@ -34,11 +34,13 @@ drwx------@  6 mengwong  staff     192 Mar  6 17:38 3._Investment
 drwx------@  4 mengwong  staff     128 Mar  6 17:13 4._HS_Classification_&_Annotation
 #+end_example
 
-In my case, I have a symlink:
+In my case, I downloaded a local copy of the ~FTA/~ directpry from the shared Google Drive
 
 #+begin_example
-  ln -s ~/"Google-Drive/My Drive/CCLAW Centre for Computational Law/RPCL Research Team/Knowledge Management - Research & Working Docs/MTI Use Case/FTA" ./
+  cp -rp ~/"Google-Drive/My Drive/CCLAW Centre for Computational Law/RPCL Research Team/Knowledge Management - Research & Working Docs/FTA Use Case/FTA" ./
 #+end_example
+
+This may be different for you based on how your Google Drive plugin is set up. You can use the Google Drive web UI to download the entire folder as a Zip file and work with a local copy.
 
 Once that's done, you can run
 
