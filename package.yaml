@@ -29,6 +29,8 @@ dependencies:
 - parser-combinators
 - text-metrics
 - boxes
+- Diff
+- process
 
 ghc-options:
 - -Wdefault

@@ -2,11 +2,14 @@
 
 module DocDiff where
 
+import System.IO
+import System.Process
 import qualified Data.Map as Map
 import qualified Data.Text      as T
 import qualified Data.Text.IO   as TIO
 import Data.Maybe (fromMaybe, listToMaybe, isJust)
 import Data.List (isSubsequenceOf, sort, sortOn, isPrefixOf)
+import Data.Algorithm.Diff
 
 import Text.Megaparsec.Char as TMC  (string, digitChar, eol, newline, char, space)
 import Text.Megaparsec
@@ -134,25 +137,35 @@ stats fchunks = do
             , doc2@(fn2,fb2) <- drop 1 $ dropWhile ((fn1 /=) . fst) (Map.toList fchunks)
             -- the above is so we don't dup pairs, we just compare one half of the triangle
             ]
-  putStrLn $ unlines
-    [ "* " ++ filename ++ "\n" ++ unlines
-      [ "** " ++ maybe "" T.unpack n ++ " " ++ T.unpack (elideSuperscripts h1title) ++ "\n" ++
-        ":length: " ++ show (T.length body) ++ "\n" ++
-        (if showBody
-          then "*** body" ++ "\n" ++ prefixEachLineWithSpace (T.unpack body) ++ "\n"
-          else mempty)
-        ++ unlines [ "*** " ++ sn fn ++ ": most similar " ++ show cfocus ++ " = " ++
-                     shortname (head $ snd <$> sort (bySimilarOneDoc cfocus fc (fn, farticles)))
-                   | (fn,farticles) <- Map.toList $ fchunks `sans` filename
-                   , cfocus <- [minBound .. maxBound :: ChunkFocus]
-                   ]
-      | fc@((n,h1title), body) <- sortByArtNum (Map.toList filebody)
-      ]
-    | (filename, filebody) <- Map.toList fchunks
-    ]
+  forM_ (Map.toList fchunks) $ \(filename, filebody) -> do
+    forM_ (sortByArtNum (Map.toList filebody)) $ \fc@((n,h1title), body) -> do
+      putStrLn $ "* " ++ filename
+      putStrLn $ "** " ++ maybe "" T.unpack n ++ " " ++ T.unpack (elideSuperscripts h1title)
+      putStrLn $ ":length: " ++ show (T.length body)
+      putStrLn $ if showBody
+                 then "*** body" ++ "\n" ++ prefixEachLineWithSpace (T.unpack body)
+                 else mempty
+      forM_ (Map.toList $ fchunks `sans` filename) $ \(fn,farticles) -> do
+        forM_ [minBound .. maxBound :: ChunkFocus] $ \cfocus -> do
+          let closest = minimum (bySimilarOneDoc cfocus fc (fn, farticles))
+          putStrLn $ "*** " ++ sn fn ++ ": most similar " ++ show cfocus ++ " = " ++ shortname (snd closest)
+          putStrLn "#+begin_example"
+          putStrLn <$> showDiff fn (T.unpack body) (fst . snd $ closest) (T.unpack . snd . snd . snd $ closest)
+          putStrLn "#+end_example"
+
+
   where sans = flip Map.delete
         elideSuperscripts = T.takeWhile (/= '^')
         prefixEachLineWithSpace = unlines . fmap (" " ++) . lines
+
+-- | showDiff: display a diff betwen two given blobs of text
+showDiff :: String -> String -> String -> String -> IO String
+showDiff txt1Name txt1 txt2Name txt2 = do
+  writeFile (txt1Name ++ ".txt") txt1
+  writeFile (txt2Name ++ ".txt") txt2
+  callCommand $ "diff -u " ++ txt1Name ++ txt2Name ++ " > diff-out.txt"
+  readFile "diff-out.txt"
+
 -- | AFAIK only Apple's Finder is smart enough to sort 1.7 1.8 1.9 1.10 1.11 1.12 instead of 1. 1.10 1.12
 sortByArtNum :: [((Maybe T.Text, b1), b2)] -> [((Maybe T.Text, b1), b2)]
 sortByArtNum = sortOn fstfst
