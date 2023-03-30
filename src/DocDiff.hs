@@ -147,26 +147,23 @@ stats fchunks = do
                  else mempty
       forM_ (Map.toList $ fchunks `sans` filename) $ \(fn,farticles) -> do
         forM_ [minBound .. maxBound :: ChunkFocus] $ \cfocus -> do
-          let closest = minimum (bySimilarOneDoc cfocus fc (fn, farticles))
-              showN   = show cfocus ++ maybe "x" T.unpack n
-              t1name = filename ++ "-" ++ showN
-              t1contents = T.unpack body
-              t2name = fst (snd closest) ++ "-" ++ maybe "x" T.unpack (fst . snd . snd $ closest)
-              t2contents = T.unpack . snd . snd . snd $ closest
+          let closest@(ci, cn@(cfn, (cmartnum, ctitle), cbody)) = minimum (bySimilarOneDoc cfocus fc (fn, farticles))
+              t1name = filename ++ "-" ++ maybe "x" T.unpack n
+              t2name = cfn      ++ "-" ++ maybe "x" T.unpack cmartnum
+              t1contents = body
+              t2contents = cbody
 
-          putStrLn $ "*** " ++ sn fn ++ ": most similar " ++ show cfocus ++ " = " ++ shortname (snd closest)
+          putStrLn $ "*** " ++ sn fn ++ ": most similar " ++ show cfocus ++ " = " ++ shortname (cfn, (cmartnum, ctitle))
 
-          when (cfocus == Body) $ do
-            putStrLn $ "outputting to t1name = " ++ t1name
-            putStrLn $ "outputting to t2name = " ++ t2name
-            putStrLn "#+begin_example"
-            diffOut <- syntacticDiff
-                       t1name      -- txt1Name
-                       t1contents  -- txt1
-                       t2name      -- txt2Name
-                       t2contents  -- txt2
-            putStrLn diffOut
-            putStrLn "#+end_example"
+          when (cfocus == Body) $ putStrLn $ "comparing bodies even though chunk focus is on the title."
+          putStrLn $ "outputting to t1name = " ++ t1name
+          putStrLn $ "outputting to t2name = " ++ t2name
+          putStrLn "#+begin_example"
+          diffOut <- syntacticDiff
+                     t1name t1contents
+                     t2name t2contents
+          putStrLn diffOut
+          putStrLn "#+end_example"
 
 
   where sans = flip Map.delete
@@ -174,14 +171,15 @@ stats fchunks = do
         prefixEachLineWithSpace = unlines . fmap (" " ++) . lines
 
 -- | syntacticDiff: display a diff betwen two given blobs of text
-syntacticDiff :: String -> String -> String -> String -> IO String
+syntacticDiff :: String -> T.Text -> String -> T.Text -> IO String
 syntacticDiff txt1Name txt1 txt2Name txt2 = do
-  writeFile (txt1Name ++ ".txt") txt1
-  writeFile (txt2Name ++ ".txt") txt2
-  callCommand $ "echo diff -u " ++ txt1Name ++ ".txt" ++ " " ++ txt2Name ++ ".txt" ++ " >  diff-out.txt"
-  callCommand $ "     diff -u " ++ txt1Name ++ ".txt" ++ " " ++ txt2Name ++ ".txt" ++ " >> diff-out.txt || echo \"\" "
+  TIO.writeFile (txt1Name ++ ".txt") (stripTrailingHash txt1)
+  TIO.writeFile (txt2Name ++ ".txt") (stripTrailingHash txt2)
+  callCommand $ "echo diff -uwB " ++ txt1Name ++ ".txt" ++ " " ++ txt2Name ++ ".txt" ++ " >  diff-out.txt"
+  callCommand $ "     diff -uwB " ++ txt1Name ++ ".txt" ++ " " ++ txt2Name ++ ".txt" ++ " >> diff-out.txt || echo \"\" "
   readFile "diff-out.txt"
-
+  where
+    stripTrailingHash x = maybe x id (T.stripSuffix "# " x)
 
 
 -- | AFAIK only Apple's Finder is smart enough to sort 1.7 1.8 1.9 1.10 1.11 1.12 instead of 1. 1.10 1.12
@@ -209,17 +207,17 @@ data ChunkFocus = Title | Body
   deriving (Eq, Show, Enum, Bounded)
 
 -- | let's compare one document against all the others
-bySimilarAllDocs :: ChunkFocus -> Article -> FileChunks -> [(Filename, H1)]
+bySimilarAllDocs :: ChunkFocus -> Article -> FileChunks -> [(Filename, H1, T.Text)]
 bySimilarAllDocs cfocus mychunk@((myh1num,myh1title),mybody) fchunks =
   snd <$> sort (concat
   [ bySimilarOneDoc cfocus mychunk (fn, farticles)
   | (fn, farticles) <- Map.toList fchunks
   ])
 
--- | let's compare one document against just one other
-bySimilarOneDoc :: ChunkFocus -> Article -> (Filename, Articles) -> [(Int,(Filename, H1))]
+-- | let's compare one document against just one other, returning the full title and body
+bySimilarOneDoc :: ChunkFocus -> Article -> (Filename, Articles) -> [(Int,(Filename, H1, T.Text))]
 bySimilarOneDoc cfocus mychunk@((myh1num,myh1title),mybody) (fn, farticles) =
-  [ (metric, (fn, h1))
+  [ (metric, (fn, h1, artbody))
   | chunk@(h1@(artnum, arttitle), artbody)   <- Map.toList farticles
   , let metric :: Int
         metric = bySimilar cfocus mychunk (fn,chunk)
