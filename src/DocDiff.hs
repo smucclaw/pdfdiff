@@ -25,7 +25,7 @@ import Text.Megaparsec
       manyTill,
       some )
 import Data.Void ( Void )
-import Control.Monad (void, when, forM_)
+import Control.Monad (void, when, forM_, guard)
 
 import Data.Char (toLower)
 import Data.Text.Metrics ( levenshtein )
@@ -151,19 +151,23 @@ stats fchunks = do
               showN   = show cfocus ++ maybe "x" T.unpack n
               t1name = filename ++ "-" ++ showN
               t1contents = T.unpack body
-              t2name = fn ++ "-" ++ showN
+              t2name = fst (snd closest) ++ "-" ++ maybe "x" T.unpack (fst . snd . snd $ closest)
               t2contents = T.unpack . snd . snd . snd $ closest
+
           putStrLn $ "*** " ++ sn fn ++ ": most similar " ++ show cfocus ++ " = " ++ shortname (snd closest)
-          putStrLn $ "outputting to t1name = " ++ t1name
-          putStrLn $ "outputting to t2name = " ++ t2name
-          putStrLn "#+begin_example"
-          diffOut <- syntacticDiff
-                     t1name -- txt1Name
-                     t1contents      -- txt1
-                     t2name -- txt2Name
-                     t2contents -- txt2
-          putStrLn diffOut
-          putStrLn "#+end_example"
+
+          when (cfocus == Body) $ do
+            putStrLn $ "outputting to t1name = " ++ t1name
+            putStrLn $ "outputting to t2name = " ++ t2name
+            putStrLn "#+begin_example"
+            diffOut <- syntacticDiff
+                       t1name      -- txt1Name
+                       t1contents  -- txt1
+                       t2name      -- txt2Name
+                       t2contents  -- txt2
+            putStrLn diffOut
+            putStrLn "#+end_example"
+
 
   where sans = flip Map.delete
         elideSuperscripts = T.takeWhile (/= '^')
