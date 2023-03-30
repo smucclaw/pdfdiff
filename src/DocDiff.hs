@@ -9,7 +9,6 @@ import qualified Data.Text      as T
 import qualified Data.Text.IO   as TIO
 import Data.Maybe (fromMaybe, listToMaybe, isJust)
 import Data.List (isSubsequenceOf, sort, sortOn, isPrefixOf)
-import Data.Algorithm.Diff
 
 import Text.Megaparsec.Char as TMC  (string, digitChar, eol, newline, char, space)
 import Text.Megaparsec
@@ -179,7 +178,7 @@ syntacticDiff txt1Name txt1 txt2Name txt2 = do
   callCommand $ "     diff -uwB " ++ txt1Name ++ ".txt" ++ " " ++ txt2Name ++ ".txt" ++ " >> diff-out.txt || echo \"\" "
   readFile "diff-out.txt"
   where
-    stripTrailingHash x = maybe x id (T.stripSuffix "# " x)
+    stripTrailingHash x = fromMaybe x (T.stripSuffix "# " x)
 
 
 -- | AFAIK only Apple's Finder is smart enough to sort 1.7 1.8 1.9 1.10 1.11 1.12 instead of 1. 1.10 1.12
