@@ -148,23 +148,37 @@ stats fchunks = do
       forM_ (Map.toList $ fchunks `sans` filename) $ \(fn,farticles) -> do
         forM_ [minBound .. maxBound :: ChunkFocus] $ \cfocus -> do
           let closest = minimum (bySimilarOneDoc cfocus fc (fn, farticles))
+              showN   = show cfocus ++ maybe "x" T.unpack n
+              t1name = filename ++ "-" ++ showN
+              t1contents = T.unpack body
+              t2name = fn ++ "-" ++ showN
+              t2contents = T.unpack . snd . snd . snd $ closest
           putStrLn $ "*** " ++ sn fn ++ ": most similar " ++ show cfocus ++ " = " ++ shortname (snd closest)
+          putStrLn $ "outputting to t1name = " ++ t1name
+          putStrLn $ "outputting to t2name = " ++ t2name
           putStrLn "#+begin_example"
-          putStrLn <$> showDiff fn (T.unpack body) (fst . snd $ closest) (T.unpack . snd . snd . snd $ closest)
+          diffOut <- syntacticDiff
+                     t1name -- txt1Name
+                     t1contents      -- txt1
+                     t2name -- txt2Name
+                     t2contents -- txt2
+          putStrLn diffOut
           putStrLn "#+end_example"
-
 
   where sans = flip Map.delete
         elideSuperscripts = T.takeWhile (/= '^')
         prefixEachLineWithSpace = unlines . fmap (" " ++) . lines
 
--- | showDiff: display a diff betwen two given blobs of text
-showDiff :: String -> String -> String -> String -> IO String
-showDiff txt1Name txt1 txt2Name txt2 = do
+-- | syntacticDiff: display a diff betwen two given blobs of text
+syntacticDiff :: String -> String -> String -> String -> IO String
+syntacticDiff txt1Name txt1 txt2Name txt2 = do
   writeFile (txt1Name ++ ".txt") txt1
   writeFile (txt2Name ++ ".txt") txt2
-  callCommand $ "diff -u " ++ txt1Name ++ txt2Name ++ " > diff-out.txt"
+  callCommand $ "echo diff -u " ++ txt1Name ++ ".txt" ++ " " ++ txt2Name ++ ".txt" ++ " >  diff-out.txt"
+  callCommand $ "     diff -u " ++ txt1Name ++ ".txt" ++ " " ++ txt2Name ++ ".txt" ++ " >> diff-out.txt || echo \"\" "
   readFile "diff-out.txt"
+
+
 
 -- | AFAIK only Apple's Finder is smart enough to sort 1.7 1.8 1.9 1.10 1.11 1.12 instead of 1. 1.10 1.12
 sortByArtNum :: [((Maybe T.Text, b1), b2)] -> [((Maybe T.Text, b1), b2)]
@@ -174,7 +188,8 @@ sortByArtNum = sortOn fstfst
 
 -- | show an article number and title, e.g.: 2(Trade in Goods)
 shortname :: (Filename, H1) -> String
-shortname (fn, (artnum,h1text)) = maybe "?" T.unpack artnum ++ "(" ++ T.unpack h1text ++ ")"
+shortname (fn, (artnum,h1text)) =
+  maybe "?" T.unpack artnum ++ "(" ++ T.unpack h1text ++ ")"
 
 -- | extract agreement name from a fully qualified path
 sn :: Filename -> String
