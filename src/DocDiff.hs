@@ -154,9 +154,9 @@ stats fchunks = do
 
           putStrLn $ "*** " ++ sn fn ++ ": most similar " ++ show cfocus ++ " = " ++ shortname (cfn, (cmartnum, ctitle))
 
-          when (cfocus == Body) $ putStrLn $ "comparing bodies even though chunk focus is on the title."
-          putStrLn $ "outputting to t1name = " ++ t1name
-          putStrLn $ "outputting to t2name = " ++ t2name
+          when (cfocus == Title) $ putStrLn $ "comparing bodies even though chunk focus is on the title.\n"
+          putStrLn $ "outputting to t1name = " ++ t1name ++ "\n"
+          putStrLn $ "outputting to t2name = " ++ t2name ++ "\n"
           putStrLn "#+begin_example"
           diffOut <- syntacticDiff
                      t1name t1contents
