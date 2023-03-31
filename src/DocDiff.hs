@@ -131,6 +131,9 @@ normalize ts = ts
 -- | compute similarity calculating the Levenshtein distance from one article to another
 stats :: FileChunks -> IO ()
 stats fchunks = do
+  putStrLn "#+TITLE: PDFdiff similarity matrix and diff of closest match"
+  putStrLn "#+OPTIONS: ^:nil"
+  putStrLn ""
   sequence_ [ drawMatrix doc1 doc2
             | doc1@(fn1,fb1) <-                                      Map.toList fchunks
             , doc2@(fn2,fb2) <- drop 1 $ dropWhile ((fn1 /=) . fst) (Map.toList fchunks)
