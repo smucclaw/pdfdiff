@@ -7,4 +7,5 @@ main :: IO ()
 main = do
   fileArgs <- getArgs
   store <- readfiles fileArgs
-  stats store
+  writeFile "/tmp/stuff" $ show store
+--  stats store

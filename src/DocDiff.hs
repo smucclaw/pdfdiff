@@ -10,7 +10,7 @@ import qualified Data.Text.IO   as TIO
 import Data.Maybe (fromMaybe, listToMaybe, isJust)
 import Data.List (isSubsequenceOf, sort, sortOn, isPrefixOf)
 
-import Text.Megaparsec.Char as TMC  (string, digitChar, eol, newline, char, space)
+import Text.Megaparsec.Char as TMC  (string, digitChar, punctuationChar, eol, newline, char, space, alphaNumChar)
 import Text.Megaparsec
     ( Parsec,
       (<|>),
@@ -35,8 +35,14 @@ import Text.PrettyPrint.Boxes
 type Filename = String
 type H1       = (Maybe T.Text, T.Text)       -- ^ the header for an article
 type FileChunks = Map.Map Filename Articles  -- ^ an entire document
-type Articles   = Map.Map H1 T.Text
-type Article    =        (H1,T.Text)
+-- type Articles   = Map.Map H1 T.Text
+-- type Article    =        (H1,T.Text)
+
+type Articles   = Map.Map H1 [Paragraph]
+type Article    =        (H1,[Paragraph])
+
+type H2        = String                -- ^ subheading or itemised list, e.g. "1.", "(a)"
+type Paragraph = (H2, T.Text)                -- ^ ("1.", "Text for 1")
 
 -- | the main processor: given multiple filenames, construct similarity metrics, and output to org file format.
 readfiles :: [String] -> IO FileChunks
@@ -75,24 +81,31 @@ preprocess t =
 
 -- | we could use a complete markdown parser here, but let's keep it simple until we need one.
 -- We parse input into a preamble followed by a list of articles.
-filechunks :: Filename -> T.Text -> [(H1, T.Text)]
+filechunks :: Filename -> T.Text -> [Article]
 filechunks fn content =
   case runParser ((,) <$> preamble fn <*> some (pChunk fn) <* eof) fn content of
     Left  x      -> error $ errorBundlePretty x
-    Right (p ,xs) -> ((Nothing, "__PREAMBLE"), p) : xs
+    Right (p ,xs) -> ((Nothing, "__PREAMBLE"), [("",p)]) : xs
 
 -- | Whatever comes before the first article
 preamble :: Filename -> Parser T.Text
 preamble fn = T.pack <$> manyTill anyChar (lookAhead $ pChunk fn)
 
+pParagraph :: Parser Paragraph
+pParagraph = (,) <$> pItem <*> (T.pack <$> manyTill anyChar (some newline)) -- <|> lookAhead pItem))
+  where
+    pItem :: Parser String
+    pItem = space *> manyTill alphaNumChar (char '.')
+
 -- | Parser for a particular article, comprising header and body.
 -- The header is in turn broken up in to article number and article title.
-pChunk :: Filename -> Parser (H1, T.Text)
+-- pChunk :: Filename -> Parser (H1, T.Text)
+pChunk :: Filename -> Parser (H1, [Paragraph])
 pChunk fn = do
   let h1 = pH1 fn
   (,)
     <$> (mapPair (Just . T.pack, T.pack) <$> h1)
-    <*> (T.pack <$> manyTill anyChar (eof <|> void (lookAhead h1)))
+    <*> manyTill pParagraph (eof <|> void (lookAhead h1))
   where
     mapPair (f1,f2) (x,y) = (f1 x, f2 y)
     pH1 fn
@@ -129,7 +142,7 @@ normalize :: [T.Text] -> [T.Text]
 normalize ts = ts
 
 -- | compute similarity calculating the Levenshtein distance from one article to another
-stats :: FileChunks -> IO ()
+--stats :: FileChunks -> IO ()
 stats fchunks = do
   putStrLn "#+TITLE: PDFdiff similarity matrix and diff of closest match"
   putStrLn "#+OPTIONS: ^:nil"
@@ -209,7 +222,7 @@ data ChunkFocus = Title | Body
   deriving (Eq, Show, Enum, Bounded)
 
 -- | let's compare one document against all the others
-bySimilarAllDocs :: ChunkFocus -> Article -> FileChunks -> [(Filename, H1, T.Text)]
+--bySimilarAllDocs :: ChunkFocus -> Article -> FileChunks -> [(Filename, H1, T.Text)]
 bySimilarAllDocs cfocus mychunk@((myh1num,myh1title),mybody) fchunks =
   snd <$> sort (concat
   [ bySimilarOneDoc cfocus mychunk (fn, farticles)
@@ -217,7 +230,7 @@ bySimilarAllDocs cfocus mychunk@((myh1num,myh1title),mybody) fchunks =
   ])
 
 -- | let's compare one document against just one other, returning the full title and body
-bySimilarOneDoc :: ChunkFocus -> Article -> (Filename, Articles) -> [(Int,(Filename, H1, T.Text))]
+--bySimilarOneDoc :: ChunkFocus -> Article -> (Filename, Articles) -> [(Int,(Filename, H1, T.Text))]
 bySimilarOneDoc cfocus mychunk@((myh1num,myh1title),mybody) (fn, farticles) =
   [ (metric, (fn, h1, artbody))
   | chunk@(h1@(artnum, arttitle), artbody)   <- Map.toList farticles
@@ -226,15 +239,15 @@ bySimilarOneDoc cfocus mychunk@((myh1num,myh1title),mybody) (fn, farticles) =
   ]
 
 -- | call the actual text similarity function for a given pair of articles
-bySimilar :: ChunkFocus -> Article -> (Filename, Article) -> Int
+--bySimilar :: ChunkFocus -> Article -> (Filename, Article) -> Int
 bySimilar cfocus mychunk@((myh1num,myh1title),mybody) (fn, ((artnum, arttitle), artbody)) =
   case cfocus of
     Title -> algo myh1title arttitle
     Body  -> algo mybody artbody
   where algo x y = levenshtein (T.toLower x) (T.toLower y)
-  
+
 -- | draw the matrices of similarity, over all the ChunkFocus methods we are prepared to handle
-drawMatrix :: (Filename, Map.Map H1 T.Text) -> (Filename, Map.Map  H1 T.Text) -> IO ()
+--drawMatrix :: (Filename, Articles) -> (Filename, Articles) -> IO ()
 drawMatrix doc1@(fn1,fb1) doc2@(fn2,fb2) =
   forM_ [minBound .. maxBound :: ChunkFocus] $ \chunkfocus -> do
     putStrLn $ unwords [ "* matrix of similarity" , sn fn1 ++ ends fb1 , "/" , sn fn2 ++ ends fb2
