@@ -92,7 +92,7 @@ preamble :: Filename -> Parser T.Text
 preamble fn = T.pack <$> manyTill anyChar (lookAhead $ pChunk fn)
 
 pParagraph :: Parser Paragraph
-pParagraph = (,) <$> pItem <*> (T.pack <$> manyTill anyChar (some newline)) -- <|> lookAhead pItem))
+pParagraph = (,) <$> pItem <*> (T.pack <$> manyTill anyChar (some eol))
   where
     pItem :: Parser String
     pItem = space *> manyTill alphaNumChar (char '.')
